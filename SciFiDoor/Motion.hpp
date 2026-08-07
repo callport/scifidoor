@@ -7,5 +7,7 @@ namespace Motion {
 
   void doUpdate(int dt);
 
+  boolean getMotion();
+
   unsigned int getTimeSinceLastMotion();
 }

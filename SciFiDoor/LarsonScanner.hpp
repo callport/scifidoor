@@ -13,6 +13,8 @@ public :
   void doUpdate(int dt); 
   void setDelay(int timeout);
 
+  void setOffset(int offset);
+
   void setMode(ScanningMode mode);
 
 private :

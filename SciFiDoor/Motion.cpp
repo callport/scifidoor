@@ -23,6 +23,10 @@ namespace Motion {
     }
   }
   
+  boolean getMotion() {
+    return digitalRead(mSensorPin) == HIGH;
+  }
+  
   unsigned int getTimeSinceLastMotion() {
     unsigned int currTime = millis();
   

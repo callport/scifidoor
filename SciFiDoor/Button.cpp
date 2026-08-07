@@ -13,10 +13,29 @@ void Button::init() {
 }
 
 void Button::update(int dt) {
+  mTotalDt += dt;
+
+  if (mTotalDt > mTimeout) {
+    mTotalDt -= mTimeout;
+
+    // For Blinking
+    mLedOn = !mLedOn;
+  }
+
+
   if (isPressed()) {
-    setLed(mLedOnWhenPressed);
+    if (mLedBlinkPressed) setLed(mLedOnWhenPressed && mLedOn);
+    else setLed(mLedOnWhenPressed);
+
+    if (!mButtonState && (mOnPressed != NULL)) mOnPressed();
+    mButtonState = true;
+    
   } else {
-    setLed(mLedOnWhenNotPressed);
+    if (mLedBlinkUnpressed) setLed(mLedOnWhenNotPressed && mLedOn);
+    else setLed(mLedOnWhenNotPressed);
+
+    if (mButtonState && (mOnReleased != NULL)) mOnReleased();
+    mButtonState = false;
   }
 }
 
@@ -26,8 +45,6 @@ void Button::setLedPin(int ledPin) {
 }
 
 void Button::setLed(boolean on) {
-  // ADD BLINK LOGIC LATER
-  
   if (mLedPin == -1) return;
   
   if (on) digitalWrite(mLedPin, HIGH);
@@ -42,8 +59,12 @@ void Button::setLedPressed(boolean mode) {
   mLedOnWhenPressed = mode;
 }
 
-void Button::setLedBlink(boolean mode) {
-  
+void Button::setLedBlinkPressed(boolean mode) {
+  mLedBlinkPressed = mode;
+}
+
+void Button::setLedBlinkUnpressed(boolean mode) {
+  mLedBlinkUnpressed = mode;
 }
 
 void Button::setDelay(int timeout) {
@@ -52,4 +73,12 @@ void Button::setDelay(int timeout) {
 
 boolean Button::isPressed() {
   return (digitalRead(mInputPin) == LOW); // Reverse Logic with Pull-Up Resistor
+}
+
+void Button::setOnPressedCallback(void (*onPressed)(void)) {
+  mOnPressed = onPressed;
+}
+
+void Button::setOnReleasedCallback(void (*onReleased)(void)) {
+  mOnReleased = onReleased;
 }

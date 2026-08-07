@@ -29,6 +29,9 @@ void LarsonScanner::setMode(ScanningMode mode) {
   mMode = mode;  
 }
 
+void LarsonScanner::setOffset(int offset) {
+  mCurrentIndex = offset;
+}
 
 void LarsonScanner::updateScanner() {
   // Turn Off Last Light
@@ -37,7 +40,7 @@ void LarsonScanner::updateScanner() {
   if (mDir == 1) {
     mCurrentIndex++;
 
-    if (mCurrentIndex >= mLeds->getWidth()) {
+    if (mCurrentIndex >= mLeds->getWidth() - 1) {
       if (mMode == BOUNCE) {
         mCurrentIndex = mLeds->getWidth() - 1;
         mDir = -1;
