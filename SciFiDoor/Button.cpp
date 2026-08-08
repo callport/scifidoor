@@ -71,8 +71,16 @@ void Button::setDelay(int timeout) {
   mTimeout = timeout;
 }
 
+void Button::setInverted(boolean inverted) {
+  mInverted = inverted;
+}
+
 boolean Button::isPressed() {
-  return (digitalRead(mInputPin) == LOW); // Reverse Logic with Pull-Up Resistor
+  boolean made = (digitalRead(mInputPin) == LOW); // Reverse Logic with Pull-Up Resistor
+
+  if (mInverted) return !made;
+
+  return made;
 }
 
 void Button::setOnPressedCallback(void (*onPressed)(void)) {

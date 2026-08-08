@@ -64,6 +64,10 @@ DoorMotor::Direction DoorMotor::getDirection() {
   return mDirection;
 }
 
+int DoorMotor::getDuty() {
+  return (int) mDuty;
+}
+
 void DoorMotor::setRampTime(int ms) {
   if (ms > 0) mRampTime = ms;
 }

@@ -26,6 +26,7 @@ public :
   void halt();
 
   Direction getDirection();
+  int getDuty();
 
   void setRampTime(int ms);
   void setMaxDuty(int duty);

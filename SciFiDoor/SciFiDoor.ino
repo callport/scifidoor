@@ -192,6 +192,20 @@ const unsigned long DEFCON_CEILING_MS = ((unsigned long) DEFCON_MAX) * DEFCON_IN
 // will be clipped short.
 const unsigned long KLAXON_DURATION_MS = 1900;
 
+/** DIAGNOSTICS *****************************/
+
+// Streams the raw state of every input to the serial monitor.  Set false once
+// the wiring is confirmed.
+bool mDebugInputs = true;
+const unsigned long DEBUG_INTERVAL_MS = 500;
+
+// The limit switches are read through pull-ups, so a normally open contact to
+// ground reads 0 only when the door has actually reached that end of travel.
+// If a switch is wired normally closed it reads the other way round and has to
+// be inverted here or every open/close will be rejected as an error.
+const bool LIMIT_SWITCH_CLOSE_INVERTED = false;
+const bool LIMIT_SWITCH_OPEN_INVERTED = false;
+
 LedMatrix mWideScanner(WIDE_SCANNER_LEDs, 7, 1);
 LedMatrix mDefCon(DEF_CON_LEDs, 5, 1);
 LedMatrix mBlueGreenWhite(BGW_LEDs, 5, 1);
@@ -281,8 +295,10 @@ void setup() {
   mLarsonScanner.setDelay(200);
 
   mLimitSwitchDoorClose.init();
+  mLimitSwitchDoorClose.setInverted(LIMIT_SWITCH_CLOSE_INVERTED);
   mLimitSwitchDoorClose.setOnPressedCallback(&stopDoorClose);
   mLimitSwitchDoorOpen.init();
+  mLimitSwitchDoorOpen.setInverted(LIMIT_SWITCH_OPEN_INVERTED);
   mLimitSwitchDoorOpen.setOnPressedCallback(&stopDoorOpen);
 
   // Edge triggered.  Polling this every pass would fire the error sound the
@@ -379,6 +395,8 @@ void loop() {
 
   animateAndUpdate(dt);
 
+  dumpInputs(dt);
+
   if (Motion::getMotion()) mSpeaker.setPin(0, 0, HIGH);
   else mSpeaker.setPin(0, 0, LOW);
   
@@ -461,6 +479,50 @@ void doDefConAnimation(unsigned long dt) {
   else mYellowButton.setLedBlinkUnpressed(true);
 
   mYellowButton.setDelay(blinkTimeout);
+}
+
+// Raw pin states, so the wiring can be read off the serial monitor rather than
+// inferred from behaviour.  0 means the pin is pulled to ground.
+unsigned long mDebugTime = 0;
+
+void dumpInputs(unsigned long dt) {
+  if (!mDebugInputs) return;
+  if (!mSerialMonitor) return;
+
+  mDebugTime += dt;
+  if (mDebugTime < DEBUG_INTERVAL_MS) return;
+  mDebugTime = 0;
+
+  Serial.print("LIMIT close(6)=");
+  Serial.print(digitalRead(LIMIT_SWITCH_DOOR_CLOSE));
+  Serial.print(" open(7)=");
+  Serial.print(digitalRead(LIMIT_SWITCH_DOOR_OPEN));
+
+  Serial.print(" | BTN grn(12)=");
+  Serial.print(digitalRead(BUTTON_GREEN));
+  Serial.print(" red(5)=");
+  Serial.print(digitalRead(BUTTON_RED));
+  Serial.print(" yel(4)=");
+  Serial.print(digitalRead(BUTTON_YELLOW));
+  Serial.print(" in(3)=");
+  Serial.print(digitalRead(BUTTON_INSIDE_SHOP_DOOR_OPEN));
+  Serial.print(" blu(11)=");
+  Serial.print(digitalRead(SWITCH_BLUE));
+
+  Serial.print(" | AIR up(52)=");
+  Serial.print(digitalRead(SWITCH_AIRLOCK_UP));
+  Serial.print(" dn(53)=");
+  Serial.print(digitalRead(SWITCH_AIRLOCK_DOWN));
+
+  Serial.print(" | MOTOR dir=");
+  Serial.print(mDoorMotor.getDirection());
+  Serial.print(" duty=");
+  Serial.print(mDoorMotor.getDuty());
+
+  Serial.print(" | DEFCON=");
+  Serial.print(getDefCon());
+  Serial.print(" t=");
+  Serial.println(mDefConTime);
 }
 
 // Milliseconds left in the running klaxon sequence, 0 when idle.
@@ -551,9 +613,23 @@ void startKlaxon() {
 
   int defCon = getDefCon();
 
+  if (mSerialMonitor) {
+    Serial.print("  DEFCON=");
+    Serial.print(defCon);
+    Serial.print(" defConTime=");
+    Serial.println(mDefConTime);
+  }
+
   if (defCon == 0) {
+    if (mSerialMonitor) Serial.println("  -> NOMINAL (pin 10)");
+
     mSoundNominal.trigger();
     return;
+  }
+
+  if (mSerialMonitor) {
+    Serial.print("  -> KLAXON x");
+    Serial.println(defCon + 1);
   }
 
   // Held low for a whole number of klaxon loops, one more than the level.

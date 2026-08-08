@@ -18,6 +18,11 @@ public :
 
   void setDelay(int timeout);
 
+  // Normally open contacts wired to ground read LOW when made, which is what
+  // isPressed() assumes.  Normally closed contacts read the other way round,
+  // so they need this set.
+  void setInverted(boolean inverted);
+
   boolean isPressed();
 
   void setOnPressedCallback(void (*onPressed)());
@@ -25,8 +30,9 @@ public :
 
 private :
   int mInputPin;
-  
+
   bool mButtonState = false;
+  boolean mInverted = false;
 
   int mLedPin = -1;
   boolean mLedOn = false;
