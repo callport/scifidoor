@@ -2,6 +2,8 @@
 
 #include "Sound.hpp"
 
+bool Sound::mMuted = false;
+
 Sound::Sound(int outputPin) {
   mOutputPin = outputPin;
 }
@@ -20,6 +22,8 @@ void Sound::update(int dt) {
 }
 
 void Sound::trigger() {
+  if (mMuted) return;
+  
   mTimePlaying = 0;
 
   digitalWrite(mOutputPin, LOW);
@@ -35,4 +39,12 @@ void Sound::loopMode(bool loop) {
   }
 */
   mLooping = loop;
+}
+
+void Sound::muteAll() {
+  mMuted = true;
+}
+
+void Sound::unmuteAll() {
+  mMuted = false;
 }

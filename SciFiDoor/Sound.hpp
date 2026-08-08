@@ -12,6 +12,9 @@ public :
   void loopMode(bool loop);
   void stop();
 
+  static void muteAll();
+  static void unmuteAll();
+
 private :
   int mOutputPin;
   
@@ -20,5 +23,7 @@ private :
   bool mLooping = false;
 
   unsigned long mTimePlaying;
+
+  static bool mMuted;
 
 };

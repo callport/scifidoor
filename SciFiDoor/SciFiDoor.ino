@@ -4,21 +4,13 @@
  * This is the sketch for my SciFi Door project.  It will have a number of different
  * modes for the different LED displays.
  * 
- * I lost code at some point.  Cannot find "All Systems Nominal" or where the klaxon 
- * only plays X times.
- * 
- * There is also something lost on the door code.  Pins 52 / 53 are unused.  
- * 
  * 
  * BUGS:
  * - Pressing OPEN when the door is open starts the sound again.  It should not.
  * 
  * TODO:
  * - If direction is reversed, ease transition so it doesn't jerk the door.
- * - Verify use of all pins
  * - Power Down Model
- * - Add support for Air Lock Level (Two Inputs Needed for reed sensors)
- * - Add function for Air Lock (Mute?) - (Two Outputs Needed for sound triggers)
  * 
  * TEST:
  * - Open Button (if Open) Produces Error
@@ -28,8 +20,7 @@
  * - Close Button (if Closed) Does not Play Close Sound
  * - Close Button (while Closing) Continues
  * 
-*/
-
+ */
 #include "Button.hpp"
 #include "Motion.hpp"
 #include "LedMatrix.hpp"
@@ -46,7 +37,7 @@ bool mSerialMonitor = true;
 
 // 0* - Serial RX
 // 1* - Serial TX
-// 2 - PWM - Motor                                  [NEW] SOUND TRIGGER - Airlock Engage (Sound 3)
+// 2 - SOUND TRIGGER - Airlock Engage (Sound 3)
 // 3 - BUTTON - Inside Shop Door  [White/Orange] -> [White/Green] - Inside Switch
 // 4 - BUTTON - Yellow
 // 5 - BUTTON - Red
@@ -55,12 +46,12 @@ bool mSerialMonitor = true;
 // 8 - ???? Motor Harness                           [NEW] PWM - Motor Control Door Close [White/Green] -> [Brown] - Door Closed - Normally Closed Switch -> [Blue] -> [White/Green] -> Speed Controller Input 1
 // 9 - ???? Motor Harness                           [NEW] PWM - Motor Control Door Open [Green] -> [Orange] - Door Open - Normally Closed Switch -> [White/Orange] -> [Green] -> Speed Controller Input 2
 
-// 10 -                                             [NEW] SOUND TRIGGER - All Systems Nominal (Sound 2)
+// 10 - SOUND TRIGGER - All Systems Nominal (Sound 2)
 // 11 - SWITCH - Blue Mode Switch
 // 12 - BUTTON - Green
 // 13* - LED - Internal Status
 // 14 - MOTION DETECTOR
-// 15 -                                             [NEW] SOUND TRIGGER - Airlock Disengage (Sound 5)
+// 15 - SOUND TRIGGER - Airlock Disengage (Sound 5)
 // 16 - SOUND TRIGGER - Door (Sound 1)
 // 17 - SOUND TRIGGER - Klaxon (Sound 4)
 // 18 - SOUND TRIGGER - Hiss (Sound 7)
@@ -101,8 +92,8 @@ bool mSerialMonitor = true;
 
 // 50 - LED - Button (Red)
 // 51 - LED - Button (Yellow)
-// 52 - OUTPUT ENABLE - Close Door  ??????          [NEW] MAGNETIC REED SWITCH - Airlock Up
-// 53 - OUTPUT ENABLE - Open Door   ??????          [NEW] MAGNETIC REED SWITCH - Airlock Down
+// 52 - MAGNETIC REED SWITCH - Airlock Up
+// 53 - MAGNETIC REED SWITCH - Airlock Down
 // 54 - 
 
 // 55-69???
@@ -111,7 +102,7 @@ bool mSerialMonitor = true;
 int BUTTON_YELLOW = 4;
 int BUTTON_RED = 5;
 int BUTTON_GREEN = 12;
-int SWITCH_BLUE = 9;
+int SWITCH_BLUE = 11;
 
 int MOTION_DETECTOR = 14;
 
@@ -119,10 +110,11 @@ int LIMIT_SWITCH_DOOR_CLOSE = 6;
 int LIMIT_SWITCH_DOOR_OPEN = 7;
 int BUTTON_INSIDE_SHOP_DOOR_OPEN = 3;
 
+int SWITCH_AIRLOCK_UP = 52;
+int SWITCH_AIRLOCK_DOWN = 53;
+
 
 /** OUTPUTS *********************************/
-int MOTOR = 2;
-
 int WIDE_SCANNER_LEDs [] = {22, 23, 24, 25, 26, 27, 28};
 int DEF_CON_LEDs [] = {29, 30, 31, 32, 33};
 int BGW_LEDs [] = {34, 35, 36, 37, 38};
@@ -170,8 +162,9 @@ int SOUND_KLAXON = 17;
 int SOUND_HISS = 18;
 int SOUND_ERROR = 19;
 
-int CLOSE_DOOR = 52;
-int OPEN_DOOR = 53;
+int SOUND_NOMINAL = 10;
+int SOUND_AIRLOCK_UP = 2;
+int SOUND_AIRLOCK_DOWN = 15;
 
 LedMatrix mWideScanner(WIDE_SCANNER_LEDs, 7, 1);
 LedMatrix mDefCon(DEF_CON_LEDs, 5, 1);
@@ -199,11 +192,19 @@ Button mBlueSwitch(SWITCH_BLUE);
 Button mLimitSwitchDoorClose(LIMIT_SWITCH_DOOR_CLOSE);
 Button mLimitSwitchDoorOpen(LIMIT_SWITCH_DOOR_OPEN);
 Button mOpenDoor(BUTTON_INSIDE_SHOP_DOOR_OPEN);
+Button mAirlockUp(SWITCH_AIRLOCK_UP);
+Button mAirlockDown(SWITCH_AIRLOCK_DOWN);
 
 Sound mSoundDoor(SOUND_DOOR);
 Sound mSoundKlaxon(SOUND_KLAXON);
 Sound mSoundHiss(SOUND_HISS);
 Sound mSoundError(SOUND_ERROR);
+Sound mSoundNominal(SOUND_NOMINAL);
+Sound mSoundAirlockUp(SOUND_AIRLOCK_UP);
+Sound mSoundAirlockDown(SOUND_AIRLOCK_DOWN);
+
+int CLOSE_DOOR = 8;
+int OPEN_DOOR = 9;
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -257,6 +258,10 @@ void setup() {
   mLimitSwitchDoorOpen.setOnPressedCallback(&stopDoorOpen);
   mOpenDoor.init();
 
+  mAirlockUp.init();
+  mAirlockUp.setOnPressedCallback(&airlockUp);
+  mAirlockDown.init();
+  mAirlockDown.setOnPressedCallback(&airlockDown);
 
   // Initialize Sounds
   mSoundDoor.init();
@@ -265,6 +270,9 @@ void setup() {
   mSoundKlaxon.loopMode(true);
   mSoundHiss.init();
   mSoundError.init();
+  mSoundNominal.init();
+  mSoundAirlockUp.init();
+  mSoundAirlockDown.init();
 
   initLedMatrixMode(LEDMatrixMode);  
   
@@ -276,6 +284,9 @@ void setup() {
   
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
+
+  // This captures the initial state of the sound airlock lever.
+  if (mAirlockDown.isPressed()) Sound::muteAll();
 
   if (mSerialMonitor) Serial.println("Initialization Complete.");
 }
@@ -363,11 +374,16 @@ void animateAndUpdate(int dt) {
   mLimitSwitchDoorClose.update(dt);
   mLimitSwitchDoorOpen.update(dt);
   mOpenDoor.update(dt);
+  mAirlockUp.update(dt);
+  mAirlockDown.update(dt);
 
   mSoundDoor.update(dt);
   mSoundKlaxon.update(dt);
   mSoundHiss.update(dt);
   mSoundError.update(dt);
+  mSoundNominal.update(dt);
+  mSoundAirlockUp.update(dt);
+  mSoundAirlockDown.update(dt);
 }
 
 unsigned long mDefConTime = 0;
@@ -474,6 +490,19 @@ void blueSwitchOff() {
   mRedButton.setLedBlinkUnpressed(true);
 }
 
+void airlockUp() {  
+  if (mSerialMonitor) Serial.println("airlockUp()");
+  
+  Sound::unmuteAll();
+  mSoundAirlockUp.trigger();
+}
+
+void airlockDown() {  
+  if (mSerialMonitor) Serial.println("airlockDown()");
+  mSoundAirlockDown.trigger();
+  Sound::muteAll();
+}
+
 
 void activate() {
   ACTIVE_MODE = true;
@@ -495,4 +524,6 @@ void deactivate() {
   mSpeaker.deactivate();
   mBlueRing.deactivate();
   mButtons.deactivate();
+  mAirlockUp.deactivate();
+  mAirlockDown.deactivate();
 }
