@@ -2,7 +2,7 @@
 
 namespace Motion {
   int mSensorPin = -1;
-  unsigned int mTimeOfLastMotion = 0;
+  unsigned long mTimeOfLastMotion = 0;
 
   
   void init(int pin) {
@@ -27,18 +27,13 @@ namespace Motion {
     return digitalRead(mSensorPin) == HIGH;
   }
   
-  unsigned int getTimeSinceLastMotion() {
-    unsigned int currTime = millis();
-  
-    // First, detect if the millis() timer has rolled over
-    // I think this will only happen if the latest time read
-    // is a smaller number than the last time (because the clock
-    // would have rolled over).
-    if (currTime < mTimeOfLastMotion) {
-      return currTime + (-1 - mTimeOfLastMotion);
-    }
-  
-    return currTime - mTimeOfLastMotion;
+  unsigned long getTimeSinceLastMotion() {
+    // millis() returns an unsigned long.  Holding it in an unsigned int would
+    // truncate it to 16 bits on AVR and wrap every ~65 seconds.
+    //
+    // Unsigned subtraction already wraps correctly when the clock rolls over
+    // at ~49 days, so no special case is needed.
+    return millis() - mTimeOfLastMotion;
   }
   
 }

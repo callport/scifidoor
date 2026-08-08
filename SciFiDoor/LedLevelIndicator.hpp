@@ -9,6 +9,10 @@ public :
 
   void setLevel(float level);
 
+  // Light exactly this many LEDs from the left.  Use when the caller already
+  // has an integer level, so the display cannot drift out of step with it.
+  void setLitCount(int count);
+
 private :
   LedMatrix *mLeds;
 

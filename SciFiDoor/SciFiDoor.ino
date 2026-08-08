@@ -6,12 +6,10 @@
  * 
  * 
  * BUGS:
- * - Pressing OPEN when the door is open starts the sound again.  It should not.
- * 
+ *
  * TODO:
- * - If direction is reversed, ease transition so it doesn't jerk the door.
  * - Power Down Model
- * 
+ *
  * TEST:
  * - Open Button (if Open) Produces Error
  * - Open Button (if Open) Does not Play Open Sound
@@ -19,9 +17,13 @@
  * - Close Button (if Closed) Produces Error
  * - Close Button (if Closed) Does not Play Close Sound
  * - Close Button (while Closing) Continues
- * 
+ * - Inside Button held while door leaves a limit switch does NOT error
+ * - Reversing mid-travel ramps down and back up rather than jerking
+ * - Klaxon sounds (DEFCON + 1) times, and Nominal at DEFCON 0
+ *
  */
 #include "Button.hpp"
+#include "DoorMotor.hpp"
 #include "Motion.hpp"
 #include "LedMatrix.hpp"
 #include "LarsonScanner.hpp"
@@ -43,8 +45,10 @@ bool mSerialMonitor = true;
 // 5 - BUTTON - Red
 // 6 - LIMIT SWITCH - Door Closed [White/Brown] -> [White/Brown] - Door Closed - Normally Open Switch
 // 7 - LIMIT SWITCH - Door Open   [Orange] -> [White/Blue] - Door Open - Normally Open Switch
-// 8 - ???? Motor Harness                           [NEW] PWM - Motor Control Door Close [White/Green] -> [Brown] - Door Closed - Normally Closed Switch -> [Blue] -> [White/Green] -> Speed Controller Input 1
-// 9 - ???? Motor Harness                           [NEW] PWM - Motor Control Door Open [Green] -> [Orange] - Door Open - Normally Closed Switch -> [White/Orange] -> [Green] -> Speed Controller Input 2
+// 8 - PWM - Motor Control Door Close [White/Green] -> [Brown] - Door Closed - Normally Closed Switch -> [Blue] -> [White/Green] -> Speed Controller Input 1
+// 9 - PWM - Motor Control Door Open [Green] -> [Orange] - Door Open - Normally Closed Switch -> [White/Orange] -> [Green] -> Speed Controller Input 2
+//     Both limit switches sit in series with these lines, so they interrupt the
+//     PWM signal in hardware as well as being read on pins 6 and 7.
 
 // 10 - SOUND TRIGGER - All Systems Nominal (Sound 2)
 // 11 - SWITCH - Blue Mode Switch
@@ -166,6 +170,28 @@ int SOUND_NOMINAL = 10;
 int SOUND_AIRLOCK_UP = 2;
 int SOUND_AIRLOCK_DOWN = 15;
 
+/** TUNING **********************************/
+
+// How long the motor takes to sweep from rest to full speed.  A reversal
+// costs two of these: one to wind down, one to wind back up.
+const int MOTOR_RAMP_MS = 400;
+const int MOTOR_MAX_DUTY = 255;
+
+// Time spent at each DEFCON level.  Drop this to a few seconds to watch the
+// whole ladder run on the bench.
+const unsigned long DEFCON_INTERVAL_MS = 120000;  // Two Minutes
+
+// DEFCON 0 lights one LED, DEFCON 4 lights all five and holds there forever.
+const int DEFCON_MAX = 4;
+
+// Once the ladder is topped out there is nothing left to accumulate.
+const unsigned long DEFCON_CEILING_MS = ((unsigned long) DEFCON_MAX) * DEFCON_INTERVAL_MS;
+
+// Length of a single klaxon loop.  The klaxon trigger is held low for a whole
+// number of these, so this has to match the audio clip or the last repeat
+// will be clipped short.
+const unsigned long KLAXON_DURATION_MS = 1900;
+
 LedMatrix mWideScanner(WIDE_SCANNER_LEDs, 7, 1);
 LedMatrix mDefCon(DEF_CON_LEDs, 5, 1);
 LedMatrix mBlueGreenWhite(BGW_LEDs, 5, 1);
@@ -205,6 +231,8 @@ Sound mSoundAirlockDown(SOUND_AIRLOCK_DOWN);
 
 int CLOSE_DOOR = 8;
 int OPEN_DOOR = 9;
+
+DoorMotor mDoorMotor(OPEN_DOOR, CLOSE_DOOR);
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -256,7 +284,16 @@ void setup() {
   mLimitSwitchDoorClose.setOnPressedCallback(&stopDoorClose);
   mLimitSwitchDoorOpen.init();
   mLimitSwitchDoorOpen.setOnPressedCallback(&stopDoorOpen);
+
+  // Edge triggered.  Polling this every pass would fire the error sound the
+  // moment the door left a limit switch while the button was still held.
   mOpenDoor.init();
+  mOpenDoor.setOnPressedCallback(&toggleDoor);
+
+  // Initialize Motor
+  mDoorMotor.init();
+  mDoorMotor.setRampTime(MOTOR_RAMP_MS);
+  mDoorMotor.setMaxDuty(MOTOR_MAX_DUTY);
 
   mAirlockUp.init();
   mAirlockUp.setOnPressedCallback(&airlockUp);
@@ -328,20 +365,17 @@ void doAlive() {
 unsigned long mLastTime = millis();
 
 void loop() {
-  // Calculate the time since the last loop and attempt to account
-  // for the clock rolling over.
-  unsigned long dt = millis() - mLastTime;
+  // Unsigned subtraction already wraps correctly when millis() rolls over at
+  // ~49 days, so no special case is needed.  Read the clock once: calling
+  // millis() several times here would let it advance mid-calculation.
+  unsigned long now = millis();
+  unsigned long dt = now - mLastTime;
 
-  if (millis() < mLastTime) {
-     dt = millis() + (-1 - mLastTime);
-  }
-  mLastTime = millis();
-  
+  mLastTime = now;
+
   Motion::doUpdate(dt);
 
   doAlive();
-
-  processInputs();  
 
   animateAndUpdate(dt);
 
@@ -352,7 +386,7 @@ void loop() {
   delay(20);
 }
 
-void animateAndUpdate(int dt) {
+void animateAndUpdate(unsigned long dt) {
   mLarsonScanner.doUpdate(dt);
 
   mBGWScanner.doUpdate(dt);
@@ -384,37 +418,82 @@ void animateAndUpdate(int dt) {
   mSoundNominal.update(dt);
   mSoundAirlockUp.update(dt);
   mSoundAirlockDown.update(dt);
+
+  mDoorMotor.update(dt);
+
+  updateKlaxon(dt);
 }
 
 unsigned long mDefConTime = 0;
-unsigned long mDefConTimeout = 600000; // 10 Minutes - compiler does weird math, can't use expression
-void doDefConAnimation(int dt) {
-  if (mDefConTime < mDefConTimeout) mDefConTime += dt;
 
-  float defConLevel = ((float) mDefConTime) / mDefConTimeout;
-  mDefConIndicator.setLevel(defConLevel);
+// 0 through DEFCON_MAX.  One more LED lights than the level, so DEFCON 0 shows
+// a single lit LED and DEFCON 4 shows all five.
+int getDefCon() {
+  unsigned long level = mDefConTime / DEFCON_INTERVAL_MS;
+
+  if (level > DEFCON_MAX) level = DEFCON_MAX;
+
+  return (int) level;
+}
+
+void doDefConAnimation(unsigned long dt) {
+  if (mDefConTime < DEFCON_CEILING_MS) {
+    mDefConTime += dt;
+
+    if (mDefConTime > DEFCON_CEILING_MS) mDefConTime = DEFCON_CEILING_MS;
+  }
+
+  int defCon = getDefCon();
+
+  // Driven off the same integer the klaxon counts with, so the bar can never
+  // disagree with the number of times the klaxon sounds.
+  mDefConIndicator.setLitCount(defCon + 1);
+
+  float defConLevel = ((float) mDefConTime) / DEFCON_CEILING_MS;
 
   //                       y =           m             x +    b
   //unsigned long blinkTimeout = (int) (-900 * defConLevel + 1000);
   // 1000 * (.2 / (x - 1.2) + 1.2)
   unsigned long blinkTimeout = (int) (1000 * (.2 / (defConLevel - 1.2) + 1.2));
 
-  if (defConLevel <= 0.2) mYellowButton.setLedBlinkUnpressed(false);
+  // Solid at DEFCON 0, so "not blinking" and "nominal" are the same condition.
+  if (defCon == 0) mYellowButton.setLedBlinkUnpressed(false);
   else mYellowButton.setLedBlinkUnpressed(true);
 
   mYellowButton.setDelay(blinkTimeout);
+}
+
+// Milliseconds left in the running klaxon sequence, 0 when idle.
+unsigned long mKlaxonRemaining = 0;
+
+void updateKlaxon(unsigned long dt) {
+  if (mKlaxonRemaining == 0) return;
+
+  if (dt >= mKlaxonRemaining) {
+    mKlaxonRemaining = 0;
+
+    mSoundKlaxon.stop();
+
+    // The alarm has been sounded, so the ladder starts over.
+    mDefConTime = 0;
+
+  } else {
+    mKlaxonRemaining -= dt;
+  }
 }
 
 //bool mDoorMoving = false;
 bool mDoorClosing = false;
 bool mDoorOpening = false;
 
-void processInputs() {
-  if (mOpenDoor.isPressed()) {
-    if (mLimitSwitchDoorOpen.isPressed()) closeDoor();
-    else if (mLimitSwitchDoorClose.isPressed()) openDoor();
-    else mSoundError.trigger();
-  }
+// The inside shop door button toggles the door.  Called from the button's
+// pressed callback, so it fires once per press rather than once per pass.
+void toggleDoor() {
+  if (mSerialMonitor) Serial.println("toggleDoor()");
+
+  if (mLimitSwitchDoorOpen.isPressed()) closeDoor();
+  else if (mLimitSwitchDoorClose.isPressed()) openDoor();
+  else mSoundError.trigger();
 }
 
 void openDoor() {  
@@ -423,7 +502,7 @@ void openDoor() {
   if (mLimitSwitchDoorOpen.isPressed()) mSoundError.trigger();
   else {
     mSoundDoor.trigger();
-    digitalWrite(OPEN_DOOR, HIGH);  
+    mDoorMotor.open();
   }
 }
 
@@ -433,38 +512,60 @@ void closeDoor() {
   if (mLimitSwitchDoorClose.isPressed()) mSoundError.trigger();
   else {
     mSoundDoor.trigger();
-    digitalWrite(CLOSE_DOOR, HIGH);  
+    mDoorMotor.close();
   }
 }
 
-void stopDoor() {  
+// Mid-travel stop, so ease the motor down rather than dropping it.
+void stopDoor() {
   if (mSerialMonitor) Serial.println("stopDoor()");
-  digitalWrite(CLOSE_DOOR, LOW);  
-  digitalWrite(OPEN_DOOR, LOW);  
+  mDoorMotor.stop();
 
   mSoundDoor.stop();
   mSoundHiss.trigger();
 }
 
-void stopDoorClose() {  
-  if (mSerialMonitor) Serial.println("stopDoorClose()");
-  stopDoor();
+// End of travel.  Ramping down here would coast the door into the stop.
+void haltDoor() {
+  mDoorMotor.halt();
+
+  mSoundDoor.stop();
+  mSoundHiss.trigger();
 }
 
-void stopDoorOpen() {  
+void stopDoorClose() {
+  if (mSerialMonitor) Serial.println("stopDoorClose()");
+  haltDoor();
+}
+
+void stopDoorOpen() {
   if (mSerialMonitor) Serial.println("stopDoorOpen()");
-  stopDoor();
+  haltDoor();
 }
 
 void startKlaxon() {
   if (mSerialMonitor) Serial.println("startKlaxon()");
+
+  // Already sounding.  Let the running sequence finish.
+  if (mKlaxonRemaining > 0) return;
+
+  int defCon = getDefCon();
+
+  if (defCon == 0) {
+    mSoundNominal.trigger();
+    return;
+  }
+
+  // Held low for a whole number of klaxon loops, one more than the level.
+  mKlaxonRemaining = ((unsigned long) (defCon + 1)) * KLAXON_DURATION_MS;
+
   mSoundKlaxon.trigger();
 }
 
+// The sequence runs to completion, so releasing the button does nothing.  It
+// stays wired up because the Button class calls it on release.
 void stopKlaxon() {
   if (mSerialMonitor) Serial.println("stopKlaxon()");
-  mSoundKlaxon.stop();
-  mDefConTime = 0;
 }
 
 void blueSwitchOn() {
@@ -524,6 +625,7 @@ void deactivate() {
   mSpeaker.deactivate();
   mBlueRing.deactivate();
   mButtons.deactivate();
-  mAirlockUp.deactivate();
-  mAirlockDown.deactivate();
+
+  // The airlock reed switches are inputs with no LED of their own, so there is
+  // nothing to turn off for them here.
 }

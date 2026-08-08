@@ -9,5 +9,5 @@ namespace Motion {
 
   boolean getMotion();
 
-  unsigned int getTimeSinceLastMotion();
+  unsigned long getTimeSinceLastMotion();
 }

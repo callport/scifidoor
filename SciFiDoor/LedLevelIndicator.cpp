@@ -16,5 +16,12 @@ void LedLevelIndicator::setLevel(float level) {
     if (level > (i * interval)) mLeds->setPin(i, 0, HIGH);
     else mLeds->setPin(i, 0, LOW);
   }
-  
+
+}
+
+void LedLevelIndicator::setLitCount(int count) {
+  for (int i = 0; i < mLeds->getWidth(); i++) {
+    if (i < count) mLeds->setPin(i, 0, HIGH);
+    else mLeds->setPin(i, 0, LOW);
+  }
 }
