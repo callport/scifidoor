@@ -10,6 +10,16 @@ Button::~Button() {}
 
 void Button::init() {
   pinMode(mInputPin, INPUT_PULLUP);
+
+  // Let the pull-up settle before the first read.
+  delayMicroseconds(100);
+
+  // Seed the edge detector from where the switch actually is, so one that is
+  // already made at power on is not reported as a fresh press.  A door parked
+  // on its limit switch would otherwise fire a stop the moment we booted.
+  //
+  // Call setInverted() before this or the seed is taken the wrong way round.
+  mButtonState = isPressed();
 }
 
 void Button::update(int dt) {

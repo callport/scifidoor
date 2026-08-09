@@ -14,6 +14,7 @@ public :
 
   static void muteAll();
   static void unmuteAll();
+  static bool isMuted();
 
 private :
   int mOutputPin;

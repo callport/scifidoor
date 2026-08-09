@@ -43,8 +43,8 @@ bool mSerialMonitor = true;
 // 3 - BUTTON - Inside Shop Door  [White/Orange] -> [White/Green] - Inside Switch
 // 4 - BUTTON - Yellow
 // 5 - BUTTON - Red
-// 6 - LIMIT SWITCH - Door Closed [White/Brown] -> [White/Brown] - Door Closed - Normally Open Switch
-// 7 - LIMIT SWITCH - Door Open   [Orange] -> [White/Blue] - Door Open - Normally Open Switch
+// 6 - LIMIT SWITCH - Door Closed [White/Brown] -> [White/Brown] - Door Closed - Normally CLOSED Switch (measured)
+// 7 - LIMIT SWITCH - Door Open   [Orange] -> [White/Blue] - Door Open - Normally CLOSED Switch (measured)
 // 8 - PWM - Motor Control Door Close [White/Green] -> [Brown] - Door Closed - Normally Closed Switch -> [Blue] -> [White/Green] -> Speed Controller Input 1
 // 9 - PWM - Motor Control Door Open [Green] -> [Orange] - Door Open - Normally Closed Switch -> [White/Orange] -> [Green] -> Speed Controller Input 2
 //     Both limit switches sit in series with these lines, so they interrupt the
@@ -199,12 +199,18 @@ const unsigned long KLAXON_DURATION_MS = 1900;
 bool mDebugInputs = true;
 const unsigned long DEBUG_INTERVAL_MS = 500;
 
-// The limit switches are read through pull-ups, so a normally open contact to
-// ground reads 0 only when the door has actually reached that end of travel.
-// If a switch is wired normally closed it reads the other way round and has to
-// be inverted here or every open/close will be rejected as an error.
-const bool LIMIT_SWITCH_CLOSE_INVERTED = false;
-const bool LIMIT_SWITCH_OPEN_INVERTED = false;
+// Both limit switches are wired normally closed, so they conduct to ground
+// until the door reaches that end of travel and reads 1 only at the limit.
+// That is the opposite of what isPressed() assumes, hence the inversion.
+//
+// Measured on the door, as raw pin reads:
+//
+//                    pin 6   pin 7
+//   fully closed       1       0
+//   mid travel         0       0
+//   fully open         0       1
+const bool LIMIT_SWITCH_CLOSE_INVERTED = true;
+const bool LIMIT_SWITCH_OPEN_INVERTED = true;
 
 LedMatrix mWideScanner(WIDE_SCANNER_LEDs, 7, 1);
 LedMatrix mDefCon(DEF_CON_LEDs, 5, 1);
@@ -294,11 +300,13 @@ void setup() {
 
   mLarsonScanner.setDelay(200);
 
-  mLimitSwitchDoorClose.init();
+  // setInverted() first: init() seeds the edge detector by reading the pin.
   mLimitSwitchDoorClose.setInverted(LIMIT_SWITCH_CLOSE_INVERTED);
+  mLimitSwitchDoorClose.init();
   mLimitSwitchDoorClose.setOnPressedCallback(&stopDoorClose);
-  mLimitSwitchDoorOpen.init();
+
   mLimitSwitchDoorOpen.setInverted(LIMIT_SWITCH_OPEN_INVERTED);
+  mLimitSwitchDoorOpen.init();
   mLimitSwitchDoorOpen.setOnPressedCallback(&stopDoorOpen);
 
   // Edge triggered.  Polling this every pass would fire the error sound the
@@ -513,6 +521,8 @@ void dumpInputs(unsigned long dt) {
   Serial.print(digitalRead(SWITCH_AIRLOCK_UP));
   Serial.print(" dn(53)=");
   Serial.print(digitalRead(SWITCH_AIRLOCK_DOWN));
+  Serial.print(" muted=");
+  Serial.print(Sound::isMuted());
 
   Serial.print(" | MOTOR dir=");
   Serial.print(mDoorMotor.getDirection());

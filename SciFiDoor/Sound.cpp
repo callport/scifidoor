@@ -48,3 +48,7 @@ void Sound::muteAll() {
 void Sound::unmuteAll() {
   mMuted = false;
 }
+
+bool Sound::isMuted() {
+  return mMuted;
+}
