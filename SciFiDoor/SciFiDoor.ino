@@ -200,9 +200,10 @@ const int SOUND_TRIGGER_HOLD_MS = 150;
 
 /** DIAGNOSTICS *****************************/
 
-// Streams the raw state of every input to the serial monitor.  Set false once
-// the wiring is confirmed.
-bool mDebugInputs = true;
+// Streams the raw state of every input to the serial monitor.  Off in normal
+// operation: at 115200 each line blocks the loop long enough to add jitter to
+// the motor ramp and the klaxon timing.  Set true to read the wiring.
+bool mDebugInputs = false;
 const unsigned long DEBUG_INTERVAL_MS = 500;
 
 // The airlock lever mutes every sound on the door.  Reed switches on 52/53
