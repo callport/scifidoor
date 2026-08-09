@@ -199,6 +199,15 @@ const unsigned long KLAXON_DURATION_MS = 1900;
 bool mDebugInputs = true;
 const unsigned long DEBUG_INTERVAL_MS = 500;
 
+// The airlock lever mutes every sound on the door, so a single stray reed
+// switch on 52/53 silences the whole prop and looks like total sound failure.
+// Leave this off until those two pins are confirmed on the bench.
+const bool AIRLOCK_MUTE_ENABLED = false;
+
+// Pulses each sound trigger in turn at boot, naming it on serial, so a dead
+// channel can be told apart from a dead trigger.
+const bool SOUND_TEST_ON_BOOT = false;
+
 // Both limit switches are wired normally closed, so they conduct to ground
 // until the door reaches that end of travel and reads 1 only at the limit.
 // That is the opposite of what isPressed() assumes, hence the inversion.
@@ -347,9 +356,51 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   // This captures the initial state of the sound airlock lever.
-  if (mAirlockDown.isPressed()) Sound::muteAll();
+  if (AIRLOCK_MUTE_ENABLED && mAirlockDown.isPressed()) Sound::muteAll();
+
+  testSounds();
+
+  if (mSerialMonitor) {
+    Serial.print("Airlock mute ");
+    Serial.print(AIRLOCK_MUTE_ENABLED ? "ENABLED" : "disabled");
+    Serial.print(", currently muted=");
+    Serial.println(Sound::isMuted());
+  }
 
   if (mSerialMonitor) Serial.println("Initialization Complete.");
+}
+
+// Drives the trigger straight to ground, bypassing Sound entirely, so this
+// reports on the wiring rather than on anything the sketch decides.
+void pulseSoundPin(const char *label, int pin) {
+  if (mSerialMonitor) {
+    Serial.print("  ");
+    Serial.print(label);
+    Serial.print(" on pin ");
+    Serial.println(pin);
+  }
+
+  digitalWrite(pin, LOW);
+  delay(150);
+  digitalWrite(pin, HIGH);
+
+  delay(2000);  // let the clip play out before the next one
+}
+
+void testSounds() {
+  if (!SOUND_TEST_ON_BOOT) return;
+
+  if (mSerialMonitor) Serial.println("Sound test:");
+
+  pulseSoundPin("DOOR", SOUND_DOOR);
+  pulseSoundPin("KLAXON", SOUND_KLAXON);
+  pulseSoundPin("HISS", SOUND_HISS);
+  pulseSoundPin("ERROR", SOUND_ERROR);
+  pulseSoundPin("NOMINAL", SOUND_NOMINAL);
+  pulseSoundPin("AIRLOCK UP", SOUND_AIRLOCK_UP);
+  pulseSoundPin("AIRLOCK DOWN", SOUND_AIRLOCK_DOWN);
+
+  if (mSerialMonitor) Serial.println("Sound test complete.");
 }
 
 void initLedMatrixMode(LED_Matrix_Mode mode) {
@@ -684,10 +735,13 @@ void airlockUp() {
   mSoundAirlockUp.trigger();
 }
 
-void airlockDown() {  
+void airlockDown() {
   if (mSerialMonitor) Serial.println("airlockDown()");
   mSoundAirlockDown.trigger();
-  Sound::muteAll();
+
+  // Gated, because this one call silences every sound on the door.
+  if (AIRLOCK_MUTE_ENABLED) Sound::muteAll();
+  else if (mSerialMonitor) Serial.println("  (mute suppressed)");
 }
 
 
