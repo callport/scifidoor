@@ -16,9 +16,15 @@ void Sound::init() {
 }
 
 void Sound::update(int dt) {
+  // Loop mode holds the trigger down until stop() lifts it.
+  if (mLooping) return;
+
+  // Already released.  Stops mTimePlaying running away between triggers.
+  if (mTimePlaying > mTimeout) return;
+
   mTimePlaying += dt;
 
-  if ((mTimePlaying > mTimeout) && !mLooping) digitalWrite(mOutputPin, HIGH);
+  if (mTimePlaying > mTimeout) digitalWrite(mOutputPin, HIGH);
 }
 
 void Sound::trigger() {
@@ -31,6 +37,10 @@ void Sound::trigger() {
 
 void Sound::stop() {
   digitalWrite(mOutputPin, HIGH);
+}
+
+void Sound::setTriggerHold(int ms) {
+  if (ms > 0) mTimeout = ms;
 }
 
 void Sound::loopMode(bool loop) {

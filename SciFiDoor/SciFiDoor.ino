@@ -192,6 +192,12 @@ const unsigned long DEFCON_CEILING_MS = ((unsigned long) DEFCON_MAX) * DEFCON_IN
 // will be clipped short.
 const unsigned long KLAXON_DURATION_MS = 1900;
 
+// How long a one shot trigger is held to ground.  150ms is the shortest pulse
+// measured working on the bench, so raise it if a sound misfires
+// intermittently.  Only affects one shots: the door and klaxon run in loop
+// mode and hold the trigger down until they are explicitly stopped.
+const int SOUND_TRIGGER_HOLD_MS = 150;
+
 /** DIAGNOSTICS *****************************/
 
 // Streams the raw state of every input to the serial monitor.  Set false once
@@ -343,6 +349,12 @@ void setup() {
   mSoundNominal.init();
   mSoundAirlockUp.init();
   mSoundAirlockDown.init();
+
+  mSoundHiss.setTriggerHold(SOUND_TRIGGER_HOLD_MS);
+  mSoundError.setTriggerHold(SOUND_TRIGGER_HOLD_MS);
+  mSoundNominal.setTriggerHold(SOUND_TRIGGER_HOLD_MS);
+  mSoundAirlockUp.setTriggerHold(SOUND_TRIGGER_HOLD_MS);
+  mSoundAirlockDown.setTriggerHold(SOUND_TRIGGER_HOLD_MS);
 
   initLedMatrixMode(LEDMatrixMode);  
   
